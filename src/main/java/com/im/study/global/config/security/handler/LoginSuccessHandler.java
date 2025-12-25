@@ -1,4 +1,4 @@
-package com.im.study.global.security.handler;
+package com.im.study.global.config.security.handler;
 
 import com.im.study.domain.jwt.service.JwtService;
 import com.im.study.global.util.JWTUtil;

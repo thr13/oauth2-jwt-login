@@ -1,7 +1,7 @@
 package com.im.study.domain.user.service;
 
 import com.im.study.domain.jwt.service.JwtService;
-import com.im.study.domain.user.dto.CustomOAuth2User;
+import com.im.study.global.config.security.oauth2.CustomOAuth2User;
 import com.im.study.domain.user.dto.UserRequestDTO;
 import com.im.study.domain.user.dto.UserResponseDTO;
 import com.im.study.domain.user.entity.SocialProviderType;
@@ -9,11 +9,10 @@ import com.im.study.domain.user.entity.UserEntity;
 import com.im.study.domain.user.entity.UserRoleType;
 import com.im.study.domain.user.exception.UserAlreadyExistsException;
 import com.im.study.domain.user.repository.UserRepository;
+import com.im.study.global.util.SecurityUtils;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -27,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Service
 public class UserService extends DefaultOAuth2UserService implements UserDetailsService {
@@ -63,14 +61,14 @@ public class UserService extends DefaultOAuth2UserService implements UserDetails
     // 회원의 이메일, 닉네임 정보 수정
     @Transactional
     public Long updateUser(UserRequestDTO dto) throws AccessDeniedException {
+        Long userId = SecurityUtils.getUserId();
 
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        if (!username.equals(dto.getUsername())) {
-            throw new AccessDeniedException("자신의 계정 정보만 수정할 수 있습니다.");
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new UsernameNotFoundException("해당 사용자를 찾을 수 없습니다: " + userId));
+
+        if (!user.getUsername().equals(dto.getUsername())) {
+            throw new AccessDeniedException("본인 소유의 계정만 수정할 수 있습니다.");
         }
-
-        UserEntity user = userRepository.findByUsernameAndIsLockAndIsSocial(dto.getUsername(), false, false)
-                .orElseThrow(() -> new UsernameNotFoundException(dto.getUsername()));
 
         user.updateUser(dto);
 
@@ -97,14 +95,14 @@ public class UserService extends DefaultOAuth2UserService implements UserDetails
         return userRepository.existsByUsername(dto.getUsername());
     }
 
+    @Transactional
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
         OAuth2User oAuth2User = super.loadUser(userRequest); // 부모 메소드 호출
 
         Map<String, Object> attributes;
-        List<GrantedAuthority> authorities;
+
         String username;
-        String role = UserRoleType.USER.name();
         String email;
         String nickname;
 
@@ -126,39 +124,43 @@ public class UserService extends DefaultOAuth2UserService implements UserDetails
             throw new OAuth2AuthenticationException("Unsupported social login");
         }
 
-        Optional<UserEntity> user = userRepository.findByUsernameAndIsSocial(username, true);
-        if (user.isPresent()) { // 기존 유저
-            role = user.get().getRoleType().name();
+        UserEntity user = userRepository.findByUsernameAndIsSocial(username, true)
+                .map(dbUser -> {
+                    UserRequestDTO dto = new UserRequestDTO();
+                    dto.setEmail(email);
+                    dto.setNickname(nickname);
+                    dbUser.updateUser(dto);
+                    return dbUser;
+                }).orElseGet(() -> userRepository.save(
+                        UserEntity.createSocialUser(
+                                username,
+                                email,
+                                SocialProviderType.valueOf(registrationId),
+                                UserRoleType.USER
+                        )));
 
-            UserRequestDTO dto = new UserRequestDTO();
-            dto.setNickname(nickname);
-            dto.setEmail(email);
-            user.get().updateUser(dto);
+        String role = UserRoleType.USER.name();
+        List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority(role));
 
-            userRepository.save(user.get());
-        } else { // 신규 유저
-            UserEntity newUser = UserEntity.createSocialUser(
-                    username,
-                    email,
-                    SocialProviderType.valueOf(registrationId),
-                    UserRoleType.USER);
-
-            userRepository.save(newUser);
-        }
-
-        authorities = List.of(new SimpleGrantedAuthority(role));
-
-        return new CustomOAuth2User(attributes, authorities, username);
+        return new CustomOAuth2User(
+                user.getId(),
+                role,
+                attributes,
+                authorities
+        );
     }
 
     @Transactional
     public void deleteUser(UserRequestDTO dto) throws AccessDeniedException {
-        SecurityContext securityContext = SecurityContextHolder.getContext();
-        String username = securityContext.getAuthentication().getName();
-        String role = securityContext.getAuthentication().getAuthorities().iterator().next().getAuthority();
+        Long userId = SecurityUtils.getUserId();
 
-        boolean isOwner = username.equals(dto.getUsername());
-        boolean isAdmin = role.equals("ROLE_" + UserRoleType.ADMIN.name());
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다: " + userId));
+
+        String role = SecurityUtils.getRole();
+
+        boolean isOwner = user.getUsername().equals(dto.getUsername());
+        boolean isAdmin = role.equals(UserRoleType.ADMIN.name());
 
         if (!isOwner && !isAdmin) {
             throw new AccessDeniedException("관리자 또는 계정 소유자만 삭제할 수 있습니다.");
@@ -169,13 +171,16 @@ public class UserService extends DefaultOAuth2UserService implements UserDetails
     }
 
     @Transactional(readOnly = true)
-    public UserResponseDTO readUser() {
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+    public UserResponseDTO readUser(Long userId) {
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다: " + userId));
 
-        UserEntity entity = userRepository.findByUsernameAndIsLock(username, false)
-                .orElseThrow(() -> new UsernameNotFoundException(username + "을(를) 찾을 수 없습니다."));
-
-        return new UserResponseDTO(username, entity.getIsSocial(), entity.getNickname(), entity.getEmail());
+        return new UserResponseDTO(
+                user.getUsername(),
+                user.getIsSocial(),
+                user.getNickname(),
+                user.getEmail()
+        );
     }
 }
 

@@ -1,4 +1,4 @@
-package com.im.study.global.security.handler;
+package com.im.study.global.config.security.handler;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

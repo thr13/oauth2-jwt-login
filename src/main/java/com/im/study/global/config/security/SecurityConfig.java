@@ -1,10 +1,10 @@
-package com.im.study.global.security;
+package com.im.study.global.config.security;
 
 import com.im.study.domain.jwt.service.JwtService;
 import com.im.study.domain.user.entity.UserRoleType;
-import com.im.study.global.security.filter.JWTFilter;
-import com.im.study.global.security.filter.LoginFilter;
-import com.im.study.global.security.handler.RefreshTokenLogoutHandler;
+import com.im.study.global.config.security.filter.JwtAuthenticationFilter;
+import com.im.study.global.config.security.filter.LoginFilter;
+import com.im.study.global.config.security.handler.RefreshTokenLogoutHandler;
 import com.im.study.global.util.JWTUtil;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -116,7 +116,7 @@ public class SecurityConfig {
         ;
 
         http
-                .addFilterBefore(new JWTFilter(jwtUtil), LogoutFilter.class)
+                .addFilterBefore(new JwtAuthenticationFilter(jwtUtil), LogoutFilter.class)
                 .addFilterBefore(new LoginFilter(authenticationManager(authenticationConfiguration), loginSuccessHandler), UsernamePasswordAuthenticationFilter.class)
         ;
 
