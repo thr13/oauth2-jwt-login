@@ -17,11 +17,16 @@ spring:
     show-sql: true
   # JWT
   jwt:
-    secret: ${JWT_SECRET}
-    access-token-expire-ms: 3600000 # 1시간
-    refresh-token-expire-ms: 604800000 # 7일
----
-spring:
+    secret: ${JWT_SECRET} # jwt 비밀키
+    access-token-expire-ms: ${JWT_ACCESS_EXPIRE_MS} # 1시간: 1800000
+    refresh-token-expire-ms: ${JWT_REFRESH_EXPIRE_MS} # 7일: 1209600000
+
+  # Redis
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
   security:
     oauth2:
       client:
