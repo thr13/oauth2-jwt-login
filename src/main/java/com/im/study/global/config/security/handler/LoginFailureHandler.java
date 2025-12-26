@@ -1,6 +1,7 @@
 package com.im.study.global.config.security.handler;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.im.study.global.config.security.dto.AuthErrorResponse;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -30,14 +31,9 @@ public class LoginFailureHandler implements AuthenticationFailureHandler {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
 
-        String message = "login failed";
-        if (exception instanceof BadCredentialsException) {
-            message = "Id or password is not valid";
-        } else if (exception instanceof DisabledException) {
-            message = "Invalid account";
-        }
-
-        Map<String, Object> body = Map.of("code", "LOGIN_FAILED", "message", message);
+        AuthErrorResponse body = new AuthErrorResponse(
+                "LOGIN_FAILED"
+                , exception.getMessage() != null ? exception.getMessage() : "Invalid username or password");
 
         objectMapper.writeValue(response.getWriter(), body);
     }
