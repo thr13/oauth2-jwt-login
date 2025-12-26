@@ -4,6 +4,8 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -80,5 +82,38 @@ public class JwtProvider {
     // 토큰 만료 여부
     public boolean isExpired(String token) {
         return parseClaims(token).getExpiration().before(new Date());
+    }
+
+    // 헤더나 쿠키에 있는 refreshToken 추출
+    public String resolveRefreshToken(HttpServletRequest request) {
+        // 헤더
+        String token = request.getHeader("Refresh-Token");
+        if (token != null && !token.isBlank()) {
+            return token;
+        }
+
+        // 쿠키
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("refreshToken".equals(cookie.getName())) {
+                    return cookie.getValue();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // refreshToken 토큰 검증(헤더용)
+    public void validateRefreshToken(String token) {
+        try {
+            Claims claims = parseClaims(token);
+
+            if (!TokenType.REFRESH.name().equals(claims.get("tokenType"))) {
+                throw new JwtException("Not a refresh token");
+            }
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new RuntimeException("Invalid refresh token", e);
+        }
     }
 }

@@ -1,9 +1,9 @@
 package com.im.study.api;
 
-import com.im.study.domain.jwt.dto.JWTResponseDTO;
-import com.im.study.global.config.security.jwt.JwtProvider;
-import com.im.study.global.config.security.token.RefreshTokenService;
+import com.im.study.global.config.security.jwt.dto.JWTResponseDTO;
+import com.im.study.global.config.security.token.TokenReissueService;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,29 +13,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class TokenController {
 
-    private final JwtProvider jwtProvider;
-    private final RefreshTokenService refreshTokenService;
+    private final TokenReissueService tokenReissueService;
 
-    public TokenController(JwtProvider jwtProvider, RefreshTokenService refreshTokenService) {
-        this.jwtProvider = jwtProvider;
-        this.refreshTokenService = refreshTokenService;
+    public TokenController(TokenReissueService tokenReissueService) {
+        this.tokenReissueService = tokenReissueService;
     }
 
+    // refreshToken 재발급
     @PostMapping(value = "/refresh", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public JWTResponseDTO reissueTokenApi(@RequestHeader("Refresh-Token") String refreshToken) {
-        if (!jwtProvider.validateToken(refreshToken)) {
-            throw new RuntimeException("Invalid refresh token");
-        }
+    public ResponseEntity<JWTResponseDTO> reissueTokenApi(@RequestHeader("Refresh-Token") String refreshToken) {
+        JWTResponseDTO response = tokenReissueService.reissue(refreshToken);
 
-        Long userId = jwtProvider.getUserId(refreshToken);
-        if (!refreshTokenService.isValid(userId, refreshToken)) {
-            throw new RuntimeException("Refresh token mismatch");
-        }
-
-        String newAccessToken = jwtProvider.createAccessToken(userId);
-        String newRefreshToken = jwtProvider.createRefreshToken(userId);
-        refreshTokenService.saveRefreshToken(userId, newRefreshToken);
-
-        return new JWTResponseDTO(newAccessToken, newRefreshToken);
+        return ResponseEntity.ok(response);
     }
 }

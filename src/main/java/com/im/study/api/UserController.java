@@ -24,33 +24,39 @@ public class UserController {
         this.userService = userService;
     }
 
+    // 회원가입
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Long>> createUserApi(@Validated(UserRequestDTO.addGroup.class) @RequestBody UserRequestDTO dto) {
-        Long id = userService.addUser(dto);
-        Map<String, Long> responseBody = Collections.singletonMap("userEntityId", id);
+        Long id = userService.registerLocal(dto);
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(responseBody);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Collections.singletonMap("userId", id));
     }
 
+    // 회원 중복 확인
     @PostMapping(value = "/exist", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Boolean> existUserApi(@Validated(UserRequestDTO.existGroup.class) @RequestBody UserRequestDTO dto) {
         return ResponseEntity.ok(userService.existUser(dto));
     }
 
-    @GetMapping(value = "/me", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public UserResponseDTO userCheckAPI() {
-        return userService.readUser(SecurityUtils.getUserId());
+    // 내 정보 조회
+    @GetMapping(value = "/me")
+    public ResponseEntity<UserResponseDTO> readMeApi() {
+        Long userId = SecurityUtils.getUserId();
+
+        return ResponseEntity.ok(userService.readUser(userId));
     }
 
+    // 회원 정보 수정
     @PatchMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Long> updateUserApi(@Validated(UserRequestDTO.updateGroup.class) @RequestBody UserRequestDTO dto) throws AccessDeniedException {
-        return ResponseEntity.status(HttpStatus.OK).body(userService.updateUser(dto));
+        return ResponseEntity.ok(userService.updateUser(dto));
     }
 
+    // 회원 탈퇴
     @DeleteMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Boolean> deleteUserApi(@Validated(UserRequestDTO.deleteGroup.class) @RequestBody UserRequestDTO dto) throws AccessDeniedException {
         userService.deleteUser(dto);
 
-        return ResponseEntity.status(HttpStatus.OK).body(true);
+        return ResponseEntity.noContent().build();
     }
 }

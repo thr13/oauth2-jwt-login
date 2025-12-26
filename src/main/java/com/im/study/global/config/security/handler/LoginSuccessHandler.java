@@ -1,7 +1,9 @@
 package com.im.study.global.config.security.handler;
 
-import com.im.study.domain.jwt.service.JwtService;
-import com.im.study.global.util.JWTUtil;
+import com.im.study.global.config.CustomUser;
+import com.im.study.global.config.security.jwt.JwtIssuer;
+import com.im.study.global.config.security.token.RefreshTokenService;
+import com.im.study.global.config.security.token.TokenPair;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -16,32 +18,31 @@ import java.io.IOException;
 @Qualifier("LoginSuccessHandler")
 public class LoginSuccessHandler implements AuthenticationSuccessHandler {
 
-    private final JwtService jwtService;
-    private final JWTUtil jwtUtil;
+    private final JwtIssuer jwtIssuer;
+    private final RefreshTokenService refreshTokenService;
 
-    public LoginSuccessHandler(JwtService jwtService, JWTUtil jwtUtil) {
-        this.jwtService = jwtService;
-        this.jwtUtil = jwtUtil;
+    public LoginSuccessHandler(JwtIssuer jwtIssuer, RefreshTokenService refreshTokenService) {
+        this.jwtIssuer = jwtIssuer;
+        this.refreshTokenService = refreshTokenService;
     }
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException, ServletException {
-        String username = authentication.getName();
-        String role = authentication.getAuthorities()
-                .iterator()
-                .next()
-                .getAuthority();
 
-        String accessToken = jwtUtil.createJWT(username, role, true);
-        String refreshToken = jwtUtil.createJWT(username, role, false);
+        CustomUser customUser = (CustomUser) authentication.getPrincipal();
+        Long userId = customUser.getUserId();
+        String role = customUser.getRoleType().name();
 
-        jwtService.addRefresh(username, refreshToken);
+        TokenPair tokenPair = jwtIssuer.issue(userId, role);
+        refreshTokenService.saveRefreshToken(userId, tokenPair.getRefreshToken(), role);
 
         response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
+        response.getWriter().write("""
+            {
+              "accessToken": "%s",
+              "refreshToken": "%s"
+            }
+        """.formatted(tokenPair.getAccessToken(), tokenPair.getRefreshToken()));
 
-        String json = String.format("{\"accessToken\":\"%s\", \"refreshToken\":\"%s\"}", accessToken, refreshToken);
-        response.getWriter().write(json);
-        response.getWriter().flush();
     }
 }

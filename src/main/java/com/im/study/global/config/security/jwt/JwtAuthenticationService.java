@@ -2,33 +2,33 @@ package com.im.study.global.config.security.jwt;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 
-@Component
-public class JwtAuthenticationService implements TokenAuthenticationService{
-    private final JwtProvider jwtProvider;
-    private final UserDetailsService userDetailsService;
+import java.util.List;
 
-    public JwtAuthenticationService(JwtProvider jwtProvider, UserDetailsService userDetailsService) {
+@Component
+public class JwtAuthenticationService implements TokenAuthenticationService {
+
+    private final JwtProvider jwtProvider;
+
+    public JwtAuthenticationService(JwtProvider jwtProvider) {
         this.jwtProvider = jwtProvider;
-        this.userDetailsService = userDetailsService;
     }
 
     @Override
-    public Authentication authenticate(String token) {
-        if (!jwtProvider.validateToken(token)) {
+    public Authentication authenticate(String accessToken) {
+        if (!jwtProvider.validateToken(accessToken)) {
             return null;
         }
 
-        if (jwtProvider.getTokenType(token) != TokenType.ACCESS) {
+        if (jwtProvider.getTokenType(accessToken) != TokenType.ACCESS) {
             return null;
         }
 
-        Long userId = jwtProvider.getUserId(token);
-        UserDetails userDetails = userDetailsService.loadUserByUsername(userId.toString());
+        Long userId = jwtProvider.getUserId(accessToken);
+        String role = jwtProvider.getRole(accessToken);
 
-        return new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+        return new UsernamePasswordAuthenticationToken(userId, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
     }
 }
