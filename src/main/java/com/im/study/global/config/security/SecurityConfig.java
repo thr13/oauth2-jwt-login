@@ -1,11 +1,14 @@
 package com.im.study.global.config.security;
 
-import com.im.study.domain.jwt.service.JwtService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.im.study.domain.user.entity.UserRoleType;
 import com.im.study.global.config.security.filter.JwtAuthenticationFilter;
 import com.im.study.global.config.security.filter.LoginFilter;
 import com.im.study.global.config.security.handler.RefreshTokenLogoutHandler;
-import com.im.study.global.util.JWTUtil;
+import com.im.study.global.config.security.jwt.JwtProvider;
+import com.im.study.global.config.security.jwt.TokenAuthenticationService;
+import com.im.study.global.config.security.token.RefreshTokenBlacklistService;
+import com.im.study.global.config.security.token.RefreshTokenService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -22,9 +25,9 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.authentication.logout.LogoutFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -37,19 +40,26 @@ public class SecurityConfig {
 
     private final AuthenticationConfiguration authenticationConfiguration;
     private final AuthenticationSuccessHandler loginSuccessHandler;
+    private final AuthenticationFailureHandler loginFailureHandler;
     private final AuthenticationSuccessHandler socialSuccessHandler;
-    private final JwtService jwtService;
-    private final JWTUtil jwtUtil;
+    private final AuthenticationFailureHandler socialFailureHandler;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final JwtProvider jwtProvider;
+    private final RefreshTokenService refreshTokenService;
+    private final RefreshTokenBlacklistService refreshTokenBlacklistService;
+    private final ObjectMapper objectMapper;
 
-    public SecurityConfig(
-            AuthenticationConfiguration authenticationConfiguration,
-            @Qualifier("LoginSuccessHandler") AuthenticationSuccessHandler loginSuccessHandler,
-            @Qualifier("SocialSuccessHandler") AuthenticationSuccessHandler socialSuccessHandler, JwtService jwtService, JWTUtil jwtUtil) {
+    public SecurityConfig(AuthenticationConfiguration authenticationConfiguration, @Qualifier("LoginSuccessHandler") AuthenticationSuccessHandler loginSuccessHandler, @Qualifier("LoginFailureHandler") AuthenticationFailureHandler loginFailureHandler, @Qualifier("SocialSuccessHandler") AuthenticationSuccessHandler socialSuccessHandler, @Qualifier("SocialFailureHandler") AuthenticationFailureHandler socialFailureHandler, JwtAuthenticationFilter jwtAuthenticationFilter, JwtProvider jwtProvider, RefreshTokenService refreshTokenService, RefreshTokenBlacklistService refreshTokenBlacklistService, ObjectMapper objectMapper) {
         this.authenticationConfiguration = authenticationConfiguration;
         this.loginSuccessHandler = loginSuccessHandler;
+        this.loginFailureHandler = loginFailureHandler;
         this.socialSuccessHandler = socialSuccessHandler;
-        this.jwtService = jwtService;
-        this.jwtUtil = jwtUtil;
+        this.socialFailureHandler = socialFailureHandler;
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.jwtProvider = jwtProvider;
+        this.refreshTokenService = refreshTokenService;
+        this.refreshTokenBlacklistService = refreshTokenBlacklistService;
+        this.objectMapper = objectMapper;
     }
 
     @Bean
@@ -86,7 +96,17 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public LoginFilter loginFilter(AuthenticationManager authenticationManager) {
+        return new LoginFilter(authenticationManager, objectMapper, loginSuccessHandler, loginFailureHandler);
+    }
+
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter(TokenAuthenticationService tokenAuthenticationService) {
+        return new JwtAuthenticationFilter(tokenAuthenticationService);
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtProvider jwtProvider, RefreshTokenService refreshTokenService, RefreshTokenBlacklistService refreshTokenBlacklistService, TokenAuthenticationService tokenAuthenticationService) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -95,7 +115,9 @@ public class SecurityConfig {
 
         http
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/jwt/exchange", "/jwt/refresh").permitAll()
+                        .requestMatchers("/login").permitAll()
+                        .requestMatchers("/api/auth/refresh").permitAll()
+                        .requestMatchers("/jwt/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/user/exist", "/user").permitAll()
                         .requestMatchers(HttpMethod.GET, "/user").hasRole(UserRoleType.USER.name())
                         .requestMatchers(HttpMethod.PATCH, "/user").hasRole(UserRoleType.USER.name())
@@ -116,8 +138,8 @@ public class SecurityConfig {
         ;
 
         http
-                .addFilterBefore(new JwtAuthenticationFilter(jwtUtil), LogoutFilter.class)
-                .addFilterBefore(new LoginFilter(authenticationManager(authenticationConfiguration), loginSuccessHandler), UsernamePasswordAuthenticationFilter.class)
+                .addFilterAt(loginFilter(authenticationManager(authenticationConfiguration)), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
         ;
 
         http
@@ -129,12 +151,13 @@ public class SecurityConfig {
         http
                 .oauth2Login(oauth2 -> oauth2
                         .successHandler(socialSuccessHandler)
+                        .failureHandler(socialFailureHandler)
                 )
         ;
 
         http
                 .logout(logout -> logout
-                        .addLogoutHandler(new RefreshTokenLogoutHandler(jwtService, jwtUtil))
+                        .addLogoutHandler(new RefreshTokenLogoutHandler(jwtProvider, refreshTokenService, refreshTokenBlacklistService))
                 )
         ;
 
